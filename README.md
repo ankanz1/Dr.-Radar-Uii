@@ -1,7 +1,8 @@
 #  DR. RADAR
 
-<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/42caab3e-f203-4e05-8da9-bab688172bb2" />
-
+<div align="center"> 
+<img  width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/42caab3e-f203-4e05-8da9-bab688172bb2" />
+</div>
 
 ### Hybrid Quantum–Classical Healthcare Intelligence
 
@@ -65,7 +66,8 @@ The greeting dynamically responds to the user's local time:
 
 ```text
 Good Morning, USER
-
+```
+---
 
 ```
                     DR. RADAR
@@ -105,5 +107,9 @@ Good Morning, USER
                          ▼
                  Doctor / Patient
 
+
 ```
-<img width="1024" height="1536" alt="bb01e7f7-0cb7-41f4-98eb-7b36413fc368" src="https://github.com/user-attachments/assets/0829e71d-229c-4496-b1a9-0764d4ce7029" />
+---
+
+
+<img width="800" height="800" alt="bb01e7f7-0cb7-41f4-98eb-7b36413fc368" src="https://github.com/user-attachments/assets/0829e71d-229c-4496-b1a9-0764d4ce7029" />
