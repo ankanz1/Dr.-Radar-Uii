@@ -3,6 +3,8 @@ import { ScreenTab, UserAccountState } from '../types';
 import { FullReportModal } from './FullReportModal';
 import { AssistantContext } from '../types/assistant';
 import { TreatmentRecommendationCard } from './recommendations/TreatmentRecommendationCard';
+import { HealthContextIndicator } from './health-info/HealthContextIndicator';
+import { HealthContextSummary } from '../types/healthInfo';
 
 interface PatientHomeScreenProps {
   onNavigate: (tab: ScreenTab) => void;
@@ -11,6 +13,7 @@ interface PatientHomeScreenProps {
   onOpenAssistant?: (context?: AssistantContext, query?: string) => void;
   user?: UserAccountState;
   onOpenProfilePictureModal?: () => void;
+  healthSummary?: HealthContextSummary;
 }
 
 export const PatientHomeScreen: React.FC<PatientHomeScreenProps> = ({
@@ -19,6 +22,7 @@ export const PatientHomeScreen: React.FC<PatientHomeScreenProps> = ({
   onOpenAssistant,
   user,
   onOpenProfilePictureModal,
+  healthSummary,
 }) => {
   const [showExplanation, setShowExplanation] = useState(false);
   const [activeReportModal, setActiveReportModal] = useState<any | null>(null);
@@ -98,7 +102,17 @@ export const PatientHomeScreen: React.FC<PatientHomeScreenProps> = ({
         </div>
       </div>
 
-      {/* 2. YOUR LATEST ANALYSIS CARD */}
+      {/* 2. Contextual Health Information Entry Point */}
+      {healthSummary && (
+        <HealthContextIndicator
+          summary={healthSummary}
+          variant="home-entry"
+          onViewHealthInfo={() => onNavigate('health-info')}
+          onAddRecords={() => onNavigate('medical-records')}
+        />
+      )}
+
+      {/* 3. YOUR LATEST ANALYSIS CARD */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">

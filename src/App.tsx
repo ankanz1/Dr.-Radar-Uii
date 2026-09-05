@@ -39,6 +39,7 @@ import { useReminders } from './hooks/useReminders';
 import { useUserAccount } from './hooks/useUserAccount';
 import { ProfileAvatar } from './components/profile/ProfileAvatar';
 import { ProfilePictureModal } from './components/profile/ProfilePictureModal';
+import { useHealthInformation } from './hooks/useHealthInformation';
 
 // Multimodal Analysis Hub & Reusable Architecture
 import { AnalysisHubScreen } from './components/AnalysisHubScreen';
@@ -64,6 +65,18 @@ export default function App() {
     deleteAccount,
     exportUserData,
   } = useUserAccount();
+
+  // Centralized Health Context & Records (My Health Information)
+  const {
+    healthProfile,
+    records: healthRecords,
+    updateHealthProfile,
+    updateSection: updateHealthSection,
+    addMedicalRecord,
+    renameMedicalRecord,
+    deleteMedicalRecord,
+    contextSummary: healthSummary,
+  } = useHealthInformation();
 
   const [userRole, setUserRole] = useState<UserRole>(user.role || 'patient');
   const [currentTab, setCurrentTab] = useState<ScreenTab>(
@@ -213,6 +226,18 @@ export default function App() {
       subtitle: 'Personal medical identification, connected hardware sensors, and emergency contacts',
       icon: 'person',
       badge: 'ID #PT-9042',
+    },
+    'health-info': {
+      title: 'My Health Information',
+      subtitle: 'Centralized patient health context, clinical questionnaire, and medical history',
+      icon: 'vital_signs',
+      badge: 'Context Active',
+    },
+    'medical-records': {
+      title: 'Medical Records & Documents',
+      subtitle: 'Upload and organize laboratory reports, clinical summaries, ECGs, and imaging files',
+      icon: 'folder_shared',
+      badge: 'Encrypted Vault',
     },
 
     // Doctor Tabs
@@ -725,6 +750,7 @@ export default function App() {
                     }}
                     user={user}
                     onOpenProfilePictureModal={() => setIsProfilePictureModalOpen(true)}
+                    healthSummary={healthSummary}
                   />
                 </motion.div>
               )}
@@ -752,6 +778,7 @@ export default function App() {
                   <PatientResultsScreen
                     onNavigate={setCurrentTab}
                     onOpenAssistant={handleOpenAssistant}
+                    healthSummary={healthSummary}
                   />
                 </motion.div>
               )}
@@ -768,7 +795,10 @@ export default function App() {
                 </motion.div>
               )}
 
-              {(currentTab === 'patient-profile' || currentTab === 'profile') && (
+              {(currentTab === 'patient-profile' ||
+                currentTab === 'profile' ||
+                currentTab === 'health-info' ||
+                currentTab === 'medical-records') && (
                 <motion.div
                   key="patient-profile"
                   initial={{ opacity: 0, y: 6 }}
@@ -789,6 +819,23 @@ export default function App() {
                       showToast('Profile picture reset to neutral default', 'info');
                     }}
                     user={user}
+                    initialSubTab={
+                      currentTab === 'health-info'
+                        ? 'health-info'
+                        : currentTab === 'medical-records'
+                        ? 'records'
+                        : 'personal'
+                    }
+                    healthProfile={healthProfile}
+                    records={healthRecords}
+                    onUpdateProfile={updateHealthProfile}
+                    onUpdateSection={updateHealthSection}
+                    onAddRecord={addMedicalRecord}
+                    onRenameRecord={renameMedicalRecord}
+                    onDeleteRecord={deleteMedicalRecord}
+                    onExportData={exportUserData}
+                    onToggleTwoFactor={toggleTwoFactor}
+                    onToggleResearchConsent={toggleResearchConsent}
                   />
                 </motion.div>
               )}
@@ -841,6 +888,8 @@ export default function App() {
                     onNavigateToExplainability={() => setCurrentTab('explainability')}
                     onOpenAssistant={handleOpenAssistant}
                     onBookAppointment={() => setCurrentTab('patient-appointments')}
+                    healthSummary={healthSummary}
+                    onNavigate={setCurrentTab}
                   />
                 </motion.div>
               )}
@@ -1049,6 +1098,8 @@ export default function App() {
           userRole={userRole}
           initialContext={assistantContext}
           user={user}
+          healthSummary={healthSummary}
+          onNavigateToTab={setCurrentTab}
         />
 
         {/* Global Dr. Radar Profile Picture & Avatar Modal */}

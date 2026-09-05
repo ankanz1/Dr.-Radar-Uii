@@ -5,15 +5,19 @@ import { FullReportModal } from './FullReportModal';
 import { ClinicalDisclaimer } from './ClinicalDisclaimer';
 import { TreatmentRecommendationCard } from './recommendations/TreatmentRecommendationCard';
 import { AssistantContext } from '../types/assistant';
+import { HealthContextIndicator } from './health-info/HealthContextIndicator';
+import { HealthContextSummary } from '../types/healthInfo';
 
 interface PatientResultsScreenProps {
   onNavigate: (tab: ScreenTab) => void;
   onOpenAssistant?: (context?: AssistantContext, query?: string) => void;
+  healthSummary?: HealthContextSummary;
 }
 
 export const PatientResultsScreen: React.FC<PatientResultsScreenProps> = ({
   onNavigate,
   onOpenAssistant,
+  healthSummary,
 }) => {
   const [selectedRange, setSelectedRange] = useState<'7d' | '30d'>('7d');
   const [activeReportModal, setActiveReportModal] = useState<any | null>(null);
@@ -211,6 +215,15 @@ export const PatientResultsScreen: React.FC<PatientResultsScreenProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Relevant Health Context (Section 10) */}
+      {healthSummary && (
+        <HealthContextIndicator
+          summary={healthSummary}
+          variant="results-card"
+          onViewHealthInfo={() => onNavigate('health-info')}
+        />
+      )}
 
       {/* Latest Result Treatment & Care Recommendations */}
       <div className="space-y-2">

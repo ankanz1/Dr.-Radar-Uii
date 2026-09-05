@@ -10,12 +10,17 @@ import { AAMI_CLASS_CONFIG, AamiClassCode } from '../data/aamiClassSystem';
 import { ClinicalDisclaimer, PrototypeResultBadge } from './ClinicalDisclaimer';
 import { AssistantContext } from '../types/assistant';
 import { TreatmentRecommendationCard } from './recommendations/TreatmentRecommendationCard';
+import { HealthContextIndicator } from './health-info/HealthContextIndicator';
+import { HealthContextSummary } from '../types/healthInfo';
+import { ScreenTab } from '../types';
 
 interface ECGAnalysisScreenProps {
   onNavigateToQuantumLab?: () => void;
   onNavigateToExplainability?: () => void;
   onOpenAssistant?: (context?: AssistantContext, query?: string) => void;
   onBookAppointment?: () => void;
+  healthSummary?: HealthContextSummary;
+  onNavigate?: (tab: ScreenTab) => void;
 }
 
 export const ECGAnalysisScreen = ({
@@ -23,6 +28,8 @@ export const ECGAnalysisScreen = ({
   onNavigateToExplainability,
   onOpenAssistant,
   onBookAppointment,
+  healthSummary,
+  onNavigate,
 }: ECGAnalysisScreenProps) => {
   // Sample Selection (Default: ECG-0248 which is Beat #208 V-Class)
   const [selectedBeatIndex, setSelectedBeatIndex] = useState<number>(1);
@@ -352,6 +359,16 @@ export const ECGAnalysisScreen = ({
           </div>
         </div>
       </section>
+
+      {/* Relevant Health Context Indicator (Section 9) */}
+      {healthSummary && (
+        <HealthContextIndicator
+          summary={healthSummary}
+          variant="analysis-banner"
+          onViewHealthInfo={() => onNavigate?.('health-info')}
+          onAddRecords={() => onNavigate?.('medical-records')}
+        />
+      )}
 
       {/* Top Section: ECG SAMPLE Card */}
       <section id="ecg-sample-section">

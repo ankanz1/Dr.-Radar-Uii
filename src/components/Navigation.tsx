@@ -82,7 +82,7 @@ export const Navigation = ({
       label: 'Profile',
       icon: 'person',
       description: 'Medical ID & sensors',
-      matchTabs: ['patient-profile', 'profile'],
+      matchTabs: ['patient-profile', 'profile', 'health-info', 'medical-records'],
     },
   ];
 

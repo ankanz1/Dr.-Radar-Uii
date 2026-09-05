@@ -13,6 +13,7 @@ import { AssistantPrivacyModal } from './AssistantPrivacyModal';
 import { AboutDrRadarAIModal } from './AboutDrRadarAIModal';
 import { ASSETS } from '../../data/mockData';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
+import { HealthContextSummary } from '../../types/healthInfo';
 
 interface AskDrRadarModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ interface AskDrRadarModalProps {
   initialContext?: AssistantContext | null;
   onNavigateToTab?: (tab: any) => void;
   user?: UserAccountState;
+  healthSummary?: HealthContextSummary;
 }
 
 export const AskDrRadarModal: React.FC<AskDrRadarModalProps> = ({
@@ -28,7 +30,9 @@ export const AskDrRadarModal: React.FC<AskDrRadarModalProps> = ({
   onClose,
   userRole,
   initialContext,
+  onNavigateToTab,
   user,
+  healthSummary,
 }) => {
   const {
     sessions,
@@ -507,6 +511,41 @@ export const AskDrRadarModal: React.FC<AskDrRadarModalProps> = ({
               id="assistant-messages-scroll"
               className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5"
             >
+              {/* Health Context Banner (Section 11) */}
+              {userRole === 'patient' && healthSummary && (
+                <div className="bg-[#f8fbfe] border border-slate-200/90 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[#ffe8e8] text-[#bc000a] flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-[18px]">vital_signs</span>
+                    </div>
+                    <div className="min-w-0 text-xs">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-[#101c28]">Using your health context:</span>
+                        <span className="text-slate-700 font-semibold">{healthSummary.patientName}</span>
+                        <span className="text-slate-400">• Age {healthSummary.age}</span>
+                      </div>
+                      <p className="text-slate-500 text-[11px] truncate mt-0.5">
+                        {healthSummary.hasHypertension ? 'Hypertension (Managed) • ' : ''}
+                        {healthSummary.topMedications?.length ? `Meds: ${healthSummary.topMedications.join(', ')} • ` : ''}
+                        {healthSummary.recordCount} records on file
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onNavigateToTab?.('health-info');
+                    }}
+                    className="self-start sm:self-center px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-[#bc000a] text-xs font-semibold text-[#bc000a] flex items-center gap-1 shrink-0 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <span>Update context</span>
+                    <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                  </button>
+                </div>
+              )}
+
               {activeSession?.messages.map((message) => {
                 const isUser = message.sender === 'user';
 

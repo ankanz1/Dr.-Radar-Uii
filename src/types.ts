@@ -63,6 +63,8 @@ export type ScreenTab =
   | 'reports'
   | 'profile'
   | 'alerts'
+  | 'health-info'
+  | 'medical-records'
   // Direct / Legacy Mappings for seamless compatibility
   | 'patient-home'
   | 'patient-ecg'
