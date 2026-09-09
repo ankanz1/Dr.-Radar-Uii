@@ -3,7 +3,7 @@ import React from 'react';
 export const CLINICAL_DISCLAIMER_TEXT =
   'Dr. Radar is an experimental biomedical research and clinical decision-support platform, not a standalone diagnostic device.';
 
-export type PrototypeLabelType = 'demo' | 'sample' | 'prototype';
+export type PrototypeLabelType = 'demo' | 'sample' | 'prototype' | 'verified';
 
 interface PrototypeResultBadgeProps {
   type?: PrototypeLabelType;
@@ -27,6 +27,8 @@ export const PrototypeResultBadge: React.FC<PrototypeResultBadgeProps> = ({
       ? 'Validation Data'
       : type === 'prototype'
       ? 'Research Inference'
+      : type === 'verified'
+      ? 'QML Verified'
       : 'Research Sample');
 
   const sizeClasses =
@@ -36,12 +38,17 @@ export const PrototypeResultBadge: React.FC<PrototypeResultBadgeProps> = ({
       ? 'text-xs px-2.5 py-1'
       : 'text-[10px] px-2 py-0.5';
 
+  const typeStyles =
+    type === 'verified'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : 'bg-slate-100 text-slate-600 border-slate-200/90';
+
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-md font-mono font-semibold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200/90 shadow-2xs select-none ${sizeClasses} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-md font-mono font-semibold uppercase tracking-wider shadow-2xs select-none ${sizeClasses} ${typeStyles} ${className}`}
       title="Biomedical research and decision-support record. For clinical investigation."
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${type === 'verified' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
       <span>{text}</span>
     </span>
   );

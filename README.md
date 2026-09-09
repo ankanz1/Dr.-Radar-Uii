@@ -1,115 +1,167 @@
-#  DR. RADAR
+# Dr. Radar — Hybrid Quantum–Classical Healthcare Intelligence
 
-<div align="center"> 
-<img  width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/42caab3e-f203-4e05-8da9-bab688172bb2" />
-</div>
+## Overview
 
-### Hybrid Quantum–Classical Healthcare Intelligence
+Dr. Radar is a patient-centered healthcare interface for AI-powered health analysis. The ECG analysis module integrates with a hybrid classical-quantum ECG classification backend to provide heartbeat morphology classification with explainability.
 
-A modern, patient-centered healthcare interface designed to make AI-powered health analysis easier to understand, more personalized, and more actionable.
+**Important**: This is a research prototype. The ECG analysis provides heartbeat morphology classification, not medical diagnosis.
 
-> **DR. RADAR is designed as a healthcare intelligence platform where users can view health insights, understand results, receive care recommendations, and interact with an AI healthcare assistant through a clean and accessible interface.**
+## Features
 
----
+- **ECG Analysis**: Real-time heartbeat classification using a frozen 8-qubit, 4-layer QML model
+- **5-Class Classification**: N (Normal), S (Supraventricular ectopic), V (Ventricular ectopic), F (Fusion), Q (Unknown)
+- **XAI Explanation**: PCA perturbation with loading-weighted back-projection showing top features and waveform importance
+- **Medical Disclaimer**: Clear labeling that results are model predictions, not clinical diagnoses
+- **AI Assistant**: Integrated healthcare assistant for result interpretation
 
-## ✨ UI Overview
+## Tech Stack
 
-The Dr. Radar UI follows a **clean, modern, medical-first design language** focused on simplicity and clarity.
+- **Frontend**: React 19 + TypeScript + Vite 6
+- **Styling**: TailwindCSS 4
+- **Backend**: FastAPI (Python) with PennyLane QML
+- **Communication**: REST API with CORS
 
-The interface is designed around a simple patient journey:
+## Quick Start
 
-**Health Data → Analysis → Result → Explanation → Recommendation → Next Action**
+### Prerequisites
 
-The UI avoids overwhelming patients with technical AI or quantum-computing information and instead presents complex healthcare insights in an understandable format.
+- Node.js 18+
+- Python 3.10+ (for backend)
+- npm or yarn
 
----
+### Backend Setup
 
-## 🎨 Design System
-
-The interface uses a professional healthcare aesthetic built around:
-
-- Clean white and light surfaces
-- Soft light-blue backgrounds and accents
-- Medical red as the primary action/highlight color
-- Dark professional typography
-- Rounded cards and components
-- Subtle borders and shadows
-- Generous spacing
-- Minimal visual clutter
-- Responsive layouts
-- Mobile-first interaction
-
-The overall visual direction is:
-
-**Clean · Human · Medical · Intelligent · Premium**
-
-The UI intentionally avoids excessive gradients, neon effects, cyberpunk styling, and overly futuristic graphics.
-
----
-
-## 🏠 Home
-
-The Home screen acts as the user's personal healthcare overview.
-
-It provides quick access to important information such as:
-
-- Personalized greeting
-- Profile/avatar
-- Health overview
-- Live monitoring
-- ECG information
-- Recent health activity
-- Quick actions
-- AI healthcare assistance
-
-The greeting dynamically responds to the user's local time:
-
-```text
-Good Morning, USER
+```bash
+cd ecg-qml
+pip install -r requirements.txt
+python -m uvicorn api:app --host 127.0.0.1 --port 8000
 ```
----
 
+Backend runs at `http://127.0.0.1:8000`
+
+### Frontend Setup
+
+```bash
+cd Dr.-Radar-Uii
+npm install
+npm run dev
 ```
-                    DR. RADAR
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-          PATIENT                 DOCTOR
-              │                     │
-              └──────────┬──────────┘
-                         │
-                 CLINICAL ANALYSIS
-                         │
-       ┌─────────────────┼─────────────────┐
-       │                 │                 │
-   Cardiology        Cancer            Imaging
-       │                 │                 │
-      ECG          Breast/Blood/       X-Ray/MRI/
-   Arrhythmia        Brain Cancer          CT
-       │                 │                 │
-       └─────────────────┼─────────────────┘
-                         │
-                  Chronic Diseases
-                         │
-                 Diabetes / HTN / CAD
-                         │
-                         ▼
-              HYBRID AI ENGINE
-                         │
-              Classical ML + QML
-                         │
-                         ▼
-                Prediction / Risk
-                         │
-                         ▼
-                  Explanation
-                         │
-                         ▼
-                 Doctor / Patient
 
+Frontend runs at `http://localhost:3000`
+
+### Environment Variable
+
+Create `.env` from `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Required variable:
+- `VITE_ECG_API_URL=http://127.0.0.1:8000` — Backend API URL for ECG inference
+
+The `.env` file is gitignored. Only `.env.example` is committed.
+
+## Available Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server (Vite + Express) |
+| `npm run build` | Production build (Vite + esbuild server) |
+| `npm run start` | Start production server |
+| `npm run preview` | Preview production build |
+| `npm run lint` | TypeScript type check |
+
+## ECG Analysis Flow
+
+1. User opens **ECG Analysis** screen
+2. Selects a sample ECG heartbeat (from MIT-BIH test set) or inputs custom 187 values
+3. Clicks **Run Analysis**
+4. Frontend sends 187 values to `POST /analyze` on backend
+5. Backend runs frozen QML pipeline:
+   - StandardScaler → PCA(8) → MinMaxScaler[0,π]
+   - 8-qubit VQC (4 layers) → Pauli-Z expectations
+   - Linear 8→5 head → Softmax
+6. Backend returns prediction + XAI explanation
+7. Frontend displays:
+   - Predicted heartbeat class (N/S/V/F/Q) with human-readable name
+   - Model confidence
+   - 5-class probability distribution
+   - XAI: Top 3 PCA features + waveform importance (187 samples)
+   - Medical disclaimer
+
+## API Endpoints Used
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Verify backend availability |
+| `/model-info` | GET | Get model metadata |
+| `/analyze` | POST | Full prediction + XAI |
+
+## Project Structure
 
 ```
----
+Dr.-Radar-Uii/
+├── src/
+│   ├── components/
+│   │   ├── ECGAnalysisScreen.tsx    # Main ECG analysis UI
+│   │   ├── ECGWaveformModal.tsx     # Waveform viewer
+│   │   ├── ClinicalDisclaimer.tsx   # Medical disclaimer
+│   │   └── ...                      # Other UI components
+│   ├── services/
+│   │   └── ecgApi.ts                # Backend API client
+│   ├── data/
+│   │   └── ecgQuantumData.ts        # Benchmark ECG samples
+│   └── App.tsx                      # Main app with routing
+├── server.ts                        # Express + Vite dev server
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── .env.example                     # Environment template
+└── .gitignore
+```
 
+## Backend Dependency
 
-<img width="800" height="800" alt="bb01e7f7-0cb7-41f4-98eb-7b36413fc368" src="https://github.com/user-attachments/assets/0829e71d-229c-4496-b1a9-0764d4ce7029" />
+The frontend requires the **ecg-qml backend** running at `VITE_ECG_API_URL` (default `http://127.0.0.1:8000`).
+
+Start the backend first:
+```bash
+cd ecg-qml && python -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
+
+Then start the frontend:
+```bash
+cd Dr.-Radar-Uii && npm run dev
+```
+
+## Production Build
+
+```bash
+npm run build
+npm run start
+```
+
+Outputs to `dist/` with bundled server at `dist/server.cjs`.
+
+## Verification
+
+Test with real MIT-BIH sample (row 0):
+
+```bash
+# Backend direct test
+curl -X POST http://127.0.0.1:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"ecg": [...187 values from mitbih_test.csv row 0...]}'
+
+# Expected: class N (Normal), confidence ~35.42%
+```
+
+## Medical Disclaimer
+
+> This system is a research prototype for ECG heartbeat classification and is not a medical diagnosis tool.
+
+The UI displays:
+- "Predicted heartbeat class" (not "diagnosis" or "disease")
+- Confidence = model posterior probability, not clinical certainty
+- XAI regions = model sensitivity, not clinical causality

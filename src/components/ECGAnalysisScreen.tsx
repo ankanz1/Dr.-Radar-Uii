@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { BENCHMARK_ECG_BEATS, ECGBeatSample } from '../data/ecgQuantumData';
 import { BottleneckAuditSection } from './BottleneckAuditSection';
 import {
@@ -13,6 +13,18 @@ import { TreatmentRecommendationCard } from './recommendations/TreatmentRecommen
 import { HealthContextIndicator } from './health-info/HealthContextIndicator';
 import { HealthContextSummary } from '../types/healthInfo';
 import { ScreenTab } from '../types';
+import { predictECG, analyzeECG, PredictionResponse, AnalyzeResponse, ECGAPIError } from '../services/ecgApi';
+
+interface XAIFeature {
+  pca_feature: number;
+  rank: number;
+  importance: number;
+  score_change: number;
+  baseline_score: number;
+  perturbed_score: number;
+  pca_value: number;
+  perturbation_value: number;
+}
 
 interface ECGAnalysisScreenProps {
   onNavigateToQuantumLab?: () => void;
@@ -49,6 +61,12 @@ export const ECGAnalysisScreen = ({
   const [activeStep, setActiveStep] = useState<number>(-1);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Real Backend Integration State
+  const [realPrediction, setRealPrediction] = useState<PredictionResponse | null>(null);
+  const [realExplanation, setRealExplanation] = useState<AnalyzeResponse['explanation'] | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [useRealBackend, setUseRealBackend] = useState<boolean>(false);
+
   const animationTimersRef = useRef<NodeJS.Timeout[]>([]);
   const svgContainerRef = useRef<SVGSVGElement | null>(null);
 
@@ -61,7 +79,7 @@ export const ECGAnalysisScreen = ({
     setShowSaliency(true);
   };
 
-  const handleRunAnalysis = () => {
+  const handleRunAnalysis = useCallback(async () => {
     if (pipelineStatus === 'running') return;
 
     animationTimersRef.current.forEach(clearTimeout);
@@ -69,44 +87,71 @@ export const ECGAnalysisScreen = ({
 
     setPipelineStatus('running');
     setActiveStep(0);
+    setApiError(null);
     setToastMessage('Pipeline initiated: Ingesting 187-D ECG beat vector...');
 
     const t1 = setTimeout(() => {
       setActiveStep(1);
-      setToastMessage('Encoder active: Compressing 187-D signal into 10-D latent vector z...');
+      setToastMessage('Encoder active: Compressing 187-D signal into 8-D PCA vector...');
     }, 500);
 
     const t2 = setTimeout(() => {
       setActiveStep(2);
-      setToastMessage('Quantum circuit executing: 10-qubit parameterized VQC on AerSimulator...');
+      setToastMessage('Quantum circuit executing: 8-qubit 4-layer VQC...');
     }, 1100);
 
     const t3 = setTimeout(() => {
       setActiveStep(3);
-      setToastMessage('Classical classification head: Softmax 5-class expectation readout...');
+      setToastMessage('Classical classification head: Softmax 5-class posterior readout...');
     }, 1800);
 
     const t4 = setTimeout(() => {
       setActiveStep(4);
-      setToastMessage('Explanation generated: Back-projected saliency & integrated gradients ready.');
+      setToastMessage('Explanation generated: PCA perturbation with loading-weighted back-projection...');
     }, 2400);
 
-    const t5 = setTimeout(() => {
-      setPipelineStatus('completed');
-      setToastMessage(
-        `Decision-Support Output: ${
-          activeBeat.classType === 'V'
-            ? 'Ventricular ectopic (V)'
-            : activeBeat.className
-        } model classification at ${(
-          activeBeat.probabilities[activeBeat.classType] * 100
-        ).toFixed(1)}% confidence (Sample Result).`
-      );
-      setTimeout(() => setToastMessage(null), 3500);
-    }, 2900);
-
-    animationTimersRef.current = [t1, t2, t3, t4, t5];
-  };
+    if (useRealBackend) {
+      const t5 = setTimeout(async () => {
+        try {
+          setToastMessage('Calling QML backend API...');
+          const [prediction, analysis] = await Promise.all([
+            predictECG(activeBeat.signal),
+            analyzeECG(activeBeat.signal),
+          ]);
+          setRealPrediction(prediction);
+          setRealExplanation(analysis.explanation);
+          setPipelineStatus('completed');
+          setToastMessage(
+            `QML Backend: ${prediction.predicted_class_name} at ${(prediction.confidence * 100).toFixed(1)}% confidence`
+          );
+          setTimeout(() => setToastMessage(null), 5000);
+        } catch (err) {
+          const error = err as ECGAPIError;
+          setApiError(error.detail || error.message);
+          setPipelineStatus('idle');
+          setActiveStep(-1);
+          setToastMessage(`Backend error: ${error.detail || error.message}`);
+          setTimeout(() => setToastMessage(null), 5000);
+        }
+      }, 2900);
+      animationTimersRef.current = [t1, t2, t3, t4, t5];
+    } else {
+      const t5 = setTimeout(() => {
+        setPipelineStatus('completed');
+        setToastMessage(
+          `Decision-Support Output: ${
+            activeBeat.classType === 'V'
+              ? 'Ventricular ectopic (V)'
+              : activeBeat.className
+          } model classification at ${(
+            activeBeat.probabilities[activeBeat.classType] * 100
+          ).toFixed(1)}% confidence (Sample Result).`
+        );
+        setTimeout(() => setToastMessage(null), 3500);
+      }, 2900);
+      animationTimersRef.current = [t1, t2, t3, t4, t5];
+    }
+  }, [activeBeat, pipelineStatus, useRealBackend]);
 
   useEffect(() => {
     return () => {
@@ -275,12 +320,23 @@ export const ECGAnalysisScreen = ({
     isDominant: boolean;
   }> = (['N', 'S', 'V', 'F', 'Q'] as AamiClassCode[]).map((code) => {
     const config = AAMI_CLASS_CONFIG[code];
+    let prob: number;
+    let isDominant: boolean;
+
+    if (realPrediction) {
+      prob = realPrediction.probabilities[code] * 100;
+      isDominant = code === realPrediction.predicted_class;
+    } else {
+      prob = activeBeat.probabilities[code] * 100;
+      isDominant = activeBeat.classType === code;
+    }
+
     return {
       code,
       name: config.fullName,
-      prob: activeBeat.probabilities[code] * 100,
+      prob,
       color: config.color,
-      isDominant: activeBeat.classType === code,
+      isDominant,
     };
   });
 
@@ -1256,7 +1312,7 @@ export const ECGAnalysisScreen = ({
 
             <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
               <span className="text-slate-500">Pipeline:</span>
-              <span className="text-slate-200 font-semibold">187-D Vector → 10-Qubit VQC → 5-Class Posterior</span>
+              <span className="text-slate-200 font-semibold">187-D Vector → StandardScaler → PCA(8) → MinMaxScaler → 8-Qubit VQC (4L) → Linear 8→5 → Softmax</span>
             </div>
           </div>
 
@@ -1301,7 +1357,7 @@ export const ECGAnalysisScreen = ({
               <div className="text-xs font-bold text-[#101c28]">
                 {pipelineStatus === 'running' ? 'Feature encoding' : 'Feature compression'}
               </div>
-              <div className="text-[10px] text-slate-500 font-mono mt-0.5">187 → 10-D Latent z</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-0.5">StandardScaler → PCA(8) → MinMaxScaler</div>
             </div>
 
             {/* Step 3: QUANTUM / VQC Ready / Execution */}
@@ -1329,7 +1385,7 @@ export const ECGAnalysisScreen = ({
                   ? 'Quantum circuit executed'
                   : 'VQC ready'}
               </div>
-              <div className="text-[10px] text-slate-500 font-mono mt-0.5">10-Qubit Ansatz</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-0.5">8-Qubit VQC (4L) — RY/RX/RZ + CNOT</div>
             </div>
 
             {/* Step 4: PREDICTION / Classification */}
@@ -1377,43 +1433,101 @@ export const ECGAnalysisScreen = ({
         </div>
       </section>
     </div>
-
-    {/* Right Column: Model Prediction & Probability Distribution (Sticky on Desktop) */}
     <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-20">
       {/* Results Section (Waveform remains continuously visible above/beside) */}
       <section id="prediction-results-section" className="space-y-4">
         <div className="matte-3d-card rounded-2xl p-5 border border-slate-200/90 bg-white shadow-xs space-y-4">
-          {/* Prediction Header */}
-          <div className="border-b border-slate-100 pb-3.5">
-            <div className="flex items-center justify-between mb-1.5">
+          {/* Real Backend Toggle */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
               <span className="text-xs font-mono uppercase font-bold tracking-wider text-slate-500">
                 Prediction
               </span>
-              <PrototypeResultBadge type="sample" size="xs" />
+              <PrototypeResultBadge type={useRealBackend && realPrediction ? 'verified' : 'sample'} size="xs" />
             </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useRealBackend}
+                onChange={(e) => setUseRealBackend(e.target.checked)}
+                className="w-4 h-4 accent-[#bc000a] border-slate-300 rounded"
+              />
+              <span className="text-xs font-mono text-slate-600">Use QML Backend</span>
+            </label>
+          </div>
 
+          {/* API Error Display */}
+          {apiError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-mono" role="alert">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-red-500" aria-hidden="true">error</span>
+                <span className="font-bold">ECG Analysis Backend Unavailable:</span>
+              </div>
+              <p className="mt-1">{apiError}</p>
+              <p className="text-[10px] text-red-600 mt-1">
+                Ensure the QML backend is running at <code className="font-mono bg-red-100 px-1 rounded">{import.meta.env.VITE_ECG_API_URL || 'http://127.0.0.1:8000'}</code>
+              </p>
+            </div>
+          )}
+
+          {/* Backend Health Check Hint */}
+          {useRealBackend && !apiError && pipelineStatus === 'idle' && !realPrediction && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-500" aria-hidden="true">info</span>
+                <span className="font-bold">Ready for Analysis:</span>
+              </div>
+              <p className="mt-1">Select an ECG sample and click <strong>Run Analysis</strong> to send it to the QML backend.</p>
+            </div>
+          )}
+
+          {/* Prediction Header */}
+          <div className="border-b border-slate-100 pb-3.5">
             <div className="flex items-center gap-3">
-              <AamiClassBadge code={activeBeat.classType} variant="compact" size="lg" />
+              {realPrediction ? (
+                <AamiClassBadge code={realPrediction.predicted_class as AamiClassCode} variant="compact" size="lg" />
+              ) : (
+                <AamiClassBadge code={activeBeat.classType} variant="compact" size="lg" />
+              )}
               <div>
                 <h3 className="text-xl font-black text-[#101c28] tracking-tight uppercase">
-                  {activeBeat.classType === 'V'
+                  {realPrediction
+                    ? realPrediction.predicted_class_name.toUpperCase()
+                    : activeBeat.classType === 'V'
                     ? 'VENTRICULAR ECTOPIC'
                     : activeBeat.className.toUpperCase()}
                 </h3>
                 <span className="text-xs text-slate-500 font-mono">
                   Sample: {selectedBeatIndex === 1 ? 'ECG-0248' : `ECG-${activeBeat.recordId.replace(/\D/g, '')}`} • Lead II
+                  {realPrediction && ' • QML Backend'}
                 </span>
+                {/* Predicted heartbeat class label with human-readable description */}
+                <p className="text-xs text-slate-600 mt-1 font-medium">
+                  Predicted heartbeat class: {realPrediction
+                    ? realPrediction.predicted_class_name
+                    : activeBeat.classType === 'V'
+                    ? 'Ventricular ectopic heartbeat'
+                    : activeBeat.classType === 'S'
+                    ? 'Supraventricular ectopic heartbeat'
+                    : activeBeat.classType === 'F'
+                    ? 'Fusion heartbeat'
+                    : activeBeat.classType === 'Q'
+                    ? 'Unknown/other heartbeat'
+                    : 'Normal heartbeat'}
+                </p>
               </div>
             </div>
 
             <div className="flex items-baseline gap-2.5 mt-2.5 pt-2 border-t border-slate-50">
               <span className="text-3xl sm:text-4xl font-black text-[#bc000a] font-mono tracking-tight">
-                {selectedBeatIndex === 1
+                {realPrediction
+                  ? `${(realPrediction.confidence * 100).toFixed(1)}%`
+                  : selectedBeatIndex === 1
                   ? '94.2%'
                   : `${(activeBeat.probabilities[activeBeat.classType] * 100).toFixed(1)}%`}
               </span>
               <span className="text-xs font-mono font-medium text-slate-500">
-                model posterior confidence
+                {realPrediction ? 'model posterior confidence (QML)' : 'model posterior confidence'}
               </span>
             </div>
           </div>
@@ -1425,26 +1539,33 @@ export const ECGAnalysisScreen = ({
                 5-Class Probability Distribution:
               </span>
               <span className="font-mono text-slate-500 text-[11px]">
-                AAMI EC57 Posterior Readout
+                {realPrediction ? 'QML Softmax Posterior' : 'AAMI EC57 Posterior Readout'}
               </span>
             </div>
 
             <div className="space-y-2.5">
               {aamiClasses.map((item) => {
-                const displayProb =
-                  selectedBeatIndex === 1
-                    ? item.code === 'N'
-                      ? 3.1
-                      : item.code === 'S'
-                      ? 1.4
-                      : item.code === 'V'
-                      ? 94.2
-                      : item.code === 'F'
-                      ? 0.7
-                      : 0.6
-                    : item.prob;
+                let displayProb: number;
+                let isPredicted: boolean;
 
-                const isPredicted = item.code === activeBeat.classType;
+                if (realPrediction) {
+                  displayProb = realPrediction.probabilities[item.code] * 100;
+                  isPredicted = item.code === realPrediction.predicted_class;
+                } else {
+                  displayProb =
+                    selectedBeatIndex === 1
+                      ? item.code === 'N'
+                        ? 3.1
+                        : item.code === 'S'
+                        ? 1.4
+                        : item.code === 'V'
+                        ? 94.2
+                        : item.code === 'F'
+                        ? 0.7
+                        : 0.6
+                      : item.prob;
+                  isPredicted = item.code === activeBeat.classType;
+                }
 
                 return (
                   <AamiClassDistributionBar
@@ -1463,6 +1584,93 @@ export const ECGAnalysisScreen = ({
               <AamiClassSystemLegend />
             </div>
 
+            {/* XAI Explanation from QML Backend */}
+            {realExplanation && (
+              <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#101c28] flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[14px] text-[#bc000a]">wb_incandescent</span>
+                    XAI Explanation
+                  </h4>
+                  <span className="text-xs font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
+                    QML Backend
+                  </span>
+                </div>
+
+                {/* Explanation Method */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs font-mono text-slate-600">
+                  <span className="font-semibold text-slate-700">Method:</span>{' '}
+                  {realExplanation.method || 'PCA perturbation with loading-weighted back-projection'}
+                </div>
+
+                {/* Top PCA Features */}
+                {realExplanation.top_pca_features && realExplanation.top_pca_features.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-[#101c28] uppercase tracking-wider text-slate-700">
+                      Top PCA Features by Importance
+                    </div>
+                    <div className="space-y-1.5">
+                      {realExplanation.top_pca_features.map((feature) => (
+                        <div
+                          key={feature.pca_feature}
+                          className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100 text-xs font-mono"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-bold">#{feature.rank}</span>
+                            <span className="text-[#101c28]">PCA Feature {feature.pca_feature}</span>
+                            <span className="text-slate-500">(value: {feature.pca_value.toFixed(3)})</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <span>Importance: {feature.importance.toFixed(4)}</span>
+                            <span>Score Δ: {feature.score_change >= 0 ? '+' : ''}{feature.score_change.toFixed(4)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Waveform Importance Visualization */}
+                {realExplanation.waveform_importance && realExplanation.waveform_importance.length === 187 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-[#101c28] uppercase tracking-wider text-slate-700">
+                      Waveform Importance (187 samples)
+                    </div>
+                    <div className="h-24 bg-[#09111b] rounded-xl border border-slate-700/60 relative overflow-hidden">
+                      <svg className="w-full h-full" viewBox="0 0 860 96" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="xaiImportanceGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.8" />
+                            <stop offset="50%" stopColor="#ef4444" stopOpacity="0.6" />
+                            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.1" />
+                          </linearGradient>
+                        </defs>
+                        <rect x="0" y="0" width="860" height="96" fill="url(#xaiImportanceGradient)" />
+                        <polyline
+                          fill="none"
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                          points={realExplanation.waveform_importance
+                            .map((imp, i) => `${(i / 186) * 860},${96 - imp * 96}`)
+                            .join(' ')}
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-mono">
+                      Model importance by PCA-loading-weighted back-projection (not medically causal)
+                    </p>
+                  </div>
+                )}
+
+                {/* XAI Disclaimer */}
+                <p className="text-[10.5px] text-slate-500 leading-normal font-sans italic">
+                  These regions indicate where the model's input representation was most sensitive to perturbation. 
+                  They describe model behavior and are not clinical causal evidence.
+                </p>
+              </div>
+            )}
+            {/* End XAI Explanation */}
+
             {/* Subtle Clinical Decision-Support Disclaimer */}
             <ClinicalDisclaimer className="mt-3" />
           </div>
@@ -1473,25 +1681,31 @@ export const ECGAnalysisScreen = ({
               <button
                 id="ask-dr-radar-ecg-prediction-btn"
                 onClick={() => {
+                  const prediction = realPrediction || {
+                    predicted_class: activeBeat.classType,
+                    predicted_class_name: activeBeat.classType === 'V' ? 'Ventricral ectopic heartbeat' : activeBeat.className,
+                    confidence: activeBeat.probabilities[activeBeat.classType],
+                    probabilities: activeBeat.probabilities,
+                  };
                   const ecgContext: AssistantContext = {
                     type: 'ecg',
-                    title: `ECG Analysis (${activeBeat.classType === 'V' ? 'Ventricular Ectopic' : activeBeat.className})`,
+                    title: `ECG Analysis (${prediction.predicted_class === 'V' ? 'Ventricular Ectopic' : prediction.predicted_class_name})`,
                     subtitle: `Record ${activeBeat.recordId} • Sample ${selectedBeatIndex === 1 ? 'ECG-0248' : `ECG-${activeBeat.recordId.replace(/\D/g, '')}`} • Lead II`,
                     sampleId: selectedBeatIndex === 1 ? 'ECG-0248' : `ECG-${activeBeat.recordId.replace(/\D/g, '')}`,
-                    prediction: activeBeat.classType === 'V' ? 'Ventricular Ectopic Beat (PVC)' : activeBeat.className,
-                    confidence: selectedBeatIndex === 1 ? '94.2%' : `${(activeBeat.probabilities[activeBeat.classType] * 100).toFixed(1)}%`,
+                    prediction: prediction.predicted_class === 'V' ? 'Ventricular Ectopic Beat (PVC)' : prediction.predicted_class_name,
+                    confidence: `${(prediction.confidence * 100).toFixed(1)}%`,
                     heartRate: 74,
-                    aamiClass: activeBeat.classType,
+                    aamiClass: prediction.predicted_class,
                     intervals: {
                       prMs: activeBeat.fiducials?.prIntervalMs || 156,
                       qrsMs: activeBeat.fiducials?.qrsDurationMs || (activeBeat.classType === 'V' ? 128 : 88),
                       qtMs: activeBeat.fiducials?.qtIntervalMs || 392,
                     },
-                    findings: `10-qubit VQC model classified as ${activeBeat.className} (${activeBeat.classType}) at ${selectedBeatIndex === 1 ? '94.2%' : (activeBeat.probabilities[activeBeat.classType] * 100).toFixed(1)}% confidence. Saliency localized to QRS morphology.`,
+                    findings: `${realPrediction ? 'QML Backend (8-qubit 4-layer VQC)' : 'Sample Result (10-qubit VQC)'} classified as ${prediction.predicted_class_name} (${prediction.predicted_class}) at ${(prediction.confidence * 100).toFixed(1)}% confidence.`,
                   };
                   onOpenAssistant(
                     ecgContext,
-                    `What does this ${activeBeat.className} (${activeBeat.classType}) result mean for my health?`
+                    `What does this ${prediction.predicted_class_name} (${prediction.predicted_class}) result mean for my health?`
                   );
                 }}
                 className="w-full py-2.5 px-4 bg-[#ffe8e8] hover:bg-[#ffdcdc] text-[#bc000a] border border-[#bc000a]/30 rounded-xl text-xs sm:text-sm font-bold shadow-2xs flex items-center justify-center gap-2 transition-all cursor-pointer group active:scale-98"
@@ -1527,14 +1741,20 @@ export const ECGAnalysisScreen = ({
         <TreatmentRecommendationCard
           clinicalInput={{
             modality: 'ecg',
-            resultCode: activeBeat.classType,
-            findingTitle: activeBeat.classType === 'V'
+            resultCode: realPrediction?.predicted_class || activeBeat.classType,
+            findingTitle: realPrediction
+              ? realPrediction.predicted_class_name
+              : activeBeat.classType === 'V'
               ? 'Ventricular Ectopic Beat (PVC)'
               : activeBeat.classType === 'S'
               ? 'Supraventricular Ectopic Beat (PAC)'
               : activeBeat.className,
-            classificationLabel: `${activeBeat.className} (Class ${activeBeat.classType})`,
-            confidence: selectedBeatIndex === 1
+            classificationLabel: realPrediction
+              ? `${realPrediction.predicted_class_name} (Class ${realPrediction.predicted_class})`
+              : `${activeBeat.className} (Class ${activeBeat.classType})`,
+            confidence: realPrediction
+              ? `${(realPrediction.confidence * 100).toFixed(1)}%`
+              : selectedBeatIndex === 1
               ? '94.2%'
               : `${(activeBeat.probabilities[activeBeat.classType] * 100).toFixed(1)}%`,
             patientContext: {
@@ -1547,7 +1767,7 @@ export const ECGAnalysisScreen = ({
           }}
           onOpenAssistant={onOpenAssistant}
           onBookAppointment={onBookAppointment}
-          sourceContextTitle={`Sample ${selectedBeatIndex === 1 ? 'ECG-0248' : `ECG-${activeBeat.recordId.replace(/\D/g, '')}`} • Lead II`}
+          sourceContextTitle={`Sample ${selectedBeatIndex === 1 ? 'ECG-0248' : `ECG-${activeBeat.recordId.replace(/\D/g, '')}`} • Lead II${realPrediction ? ' • QML Backend' : ''}`}
         />
       </section>
 
